@@ -34,6 +34,8 @@ local spinBotSpeed = 10
 local silentAimActive = false
 local silentAimOriginalCFrame = nil
 
+local aimIndicatorLine = nil
+
 local activeSlider = nil
 local draggingFloat = false
 
@@ -209,6 +211,60 @@ local function getBestTarget()
     end
 end
 
+local function getVisualTarget()
+    local bestPlayer = nil
+    local bestDistToCenter = math.huge
+    local bestDist3D = math.huge
+    local bestHealth = math.huge
+    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+
+    for _, v in pairs(Players:GetPlayers()) do
+        if v == lplr then continue end
+        if isPlayerDead(v) then continue end
+        if isAlly(v) then continue end
+        if teamCheckEnabled and isSameTeam(v) then continue end
+
+        local checkPos = getTargetPosition(v.Character, "Head")
+        if not checkPos then continue end
+
+        local screenPos, onScreen = camera:WorldToViewportPoint(checkPos)
+        if not onScreen or not isWithinFOV(screenPos) then continue end
+        if not isVisible(checkPos, v.Character) then continue end
+
+        local distToCenter = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
+        local dist3D = (checkPos - camera.CFrame.Position).Magnitude
+        local humanoid = v.Character and v.Character:FindFirstChild("Humanoid")
+        local health = humanoid and humanoid.Health or 100
+
+        local isBetter = false
+        if dist3D < bestDist3D - 1 then
+            isBetter = true
+        elseif math.abs(dist3D - bestDist3D) <= 1 then
+            if distToCenter < bestDistToCenter - 0.1 then
+                isBetter = true
+            elseif math.abs(distToCenter - bestDistToCenter) <= 0.1 then
+                if health < bestHealth then
+                    isBetter = true
+                end
+            end
+        end
+
+        if isBetter then
+            bestDistToCenter = distToCenter
+            bestDist3D = dist3D
+            bestHealth = health
+            bestPlayer = v
+        end
+    end
+
+    if bestPlayer then
+        local targetType = "Head"
+        if aimbotTarget == "Chest" then targetType = "Chest" end
+        return getTargetPosition(bestPlayer.Character, targetType)
+    end
+    return nil
+end
+
 local function applySilentAim()
     if not silentAimEnabled then return end
     local targetPos, _ = getBestTarget()
@@ -243,7 +299,7 @@ end
 local function createFOVCircle()
     if fovCircle then return end
     fovCircle = Drawing.new("Circle")
-    fovCircle.Thickness = 2
+    fovCircle.Thickness = 1
     fovCircle.Color = Color3.fromRGB(255, 255, 255)
     fovCircle.Filled = false
     fovCircle.NumSides = 64
@@ -252,10 +308,27 @@ end
 local function updateFOVCircle()
     if not fovCircle then return end
     fovCircle.Visible = fovEnabled
-    if fovCircle.Visible then
-        fovCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-        fovCircle.Radius = fovRadius
+    if not fovEnabled then return end
+    fovCircle.Position = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
+    fovCircle.Radius = fovRadius
+
+    local hasTarget = false
+    if fovEnabled then
+        for _, v in pairs(Players:GetPlayers()) do
+            if v == lplr then continue end
+            if isPlayerDead(v) then continue end
+            if isAlly(v) then continue end
+            if teamCheckEnabled and isSameTeam(v) then continue end
+            local pos = getTargetPosition(v.Character, "Head")
+            if not pos then continue end
+            local screenPos, onScreen = camera:WorldToViewportPoint(pos)
+            if onScreen and isWithinFOV(screenPos) and isVisible(pos, v.Character) then
+                hasTarget = true
+                break
+            end
+        end
     end
+    fovCircle.Color = hasTarget and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 255, 255)
 end
 
 local function clearPlayerESP(player)
@@ -320,6 +393,7 @@ local function getSkeletonConnections(character)
 end
 
 local function getESPColorForPlayer(player)
+    if player == currentTarget then return Color3.new(1, 0, 0) end
     if isAlly(player) then return Color3.new(0, 1, 1) end
     if not teamCheckEnabled then return Color3.new(1, 1, 1) end
     if lplr.Team == nil or player.Team == nil then return Color3.new(1, 0, 0) end
@@ -954,6 +1028,31 @@ RunService.RenderStepped:Connect(function()
         silentAimOriginalCFrame = nil
     end
 
+    if silentAimEnabled then
+        local targetPos = getVisualTarget()
+        if targetPos then
+            if not aimIndicatorLine then
+                aimIndicatorLine = Drawing.new("Line")
+                aimIndicatorLine.Thickness = 1
+                aimIndicatorLine.Color = Color3.fromRGB(0, 150, 255)
+            end
+            aimIndicatorLine.From = Vector2.new(camera.ViewportSize.X/2, camera.ViewportSize.Y/2)
+            local screenPos = camera:WorldToViewportPoint(targetPos)
+            aimIndicatorLine.To = Vector2.new(screenPos.X, screenPos.Y)
+            aimIndicatorLine.Visible = true
+        else
+            if aimIndicatorLine then
+                aimIndicatorLine:Remove()
+                aimIndicatorLine = nil
+            end
+        end
+    else
+        if aimIndicatorLine then
+            aimIndicatorLine:Remove()
+            aimIndicatorLine = nil
+        end
+    end
+
     if speedEnabled and lplr.Character then
         local humanoid = lplr.Character:FindFirstChild("Humanoid")
         if humanoid and humanoid.Health > 0 then humanoid.WalkSpeed = currentSpeed end
@@ -966,6 +1065,7 @@ end)
 screenGui.AncestryChanged:Connect(function()
     if not screenGui.Parent then
         if fovCircle then fovCircle:Remove() end
+        if aimIndicatorLine then aimIndicatorLine:Remove() end
         clearAllESP()
     end
 end)
