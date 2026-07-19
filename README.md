@@ -21,7 +21,6 @@ local aimbotTarget = "Head"
 local legitHoldTime = 800
 local currentTarget = nil
 local targetAcquireTime = nil
-local visualTargetPlayer = nil
 
 local noRecoilEnabled = false
 local speedEnabled = false
@@ -140,12 +139,12 @@ local function getBestTarget()
         local health = humanoid and humanoid.Health or 100
 
         local isBetter = false
-        if dist3D < bestDist3D - 1 then
+        if distToCenter < bestDistToCenter - 0.1 then
             isBetter = true
-        elseif math.abs(dist3D - bestDist3D) <= 1 then
-            if distToCenter < bestDistToCenter - 0.1 then
+        elseif math.abs(distToCenter - bestDistToCenter) <= 0.1 then
+            if dist3D < bestDist3D - 1 then
                 isBetter = true
-            elseif math.abs(distToCenter - bestDistToCenter) <= 0.1 then
+            elseif math.abs(dist3D - bestDist3D) <= 1 then
                 if health < bestHealth then
                     isBetter = true
                 end
@@ -175,58 +174,9 @@ local function getBestTarget()
     end
 end
 
-local function getVisualTarget()
-    local bestPlayer = nil
-    local bestDistToCenter = math.huge
-    local bestDist3D = math.huge
-    local bestHealth = math.huge
-    local screenCenter = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y / 2)
-
-    for _, v in pairs(Players:GetPlayers()) do
-        if v == lplr then continue end
-        if isPlayerDead(v) then continue end
-        if isAlly(v) then continue end
-        if teamCheckEnabled and isSameTeam(v) then continue end
-
-        local checkPos = getTargetPosition(v.Character, "Head")
-        if not checkPos then continue end
-
-        local screenPos, onScreen = camera:WorldToViewportPoint(checkPos)
-        if not onScreen or not isWithinFOV(screenPos) then continue end
-        if not isVisible(checkPos, v.Character) then continue end
-
-        local distToCenter = (Vector2.new(screenPos.X, screenPos.Y) - screenCenter).Magnitude
-        local dist3D = (checkPos - camera.CFrame.Position).Magnitude
-        local humanoid = v.Character and v.Character:FindFirstChild("Humanoid")
-        local health = humanoid and humanoid.Health or 100
-
-        local isBetter = false
-        if dist3D < bestDist3D - 1 then
-            isBetter = true
-        elseif math.abs(dist3D - bestDist3D) <= 1 then
-            if distToCenter < bestDistToCenter - 0.1 then
-                isBetter = true
-            elseif math.abs(distToCenter - bestDistToCenter) <= 0.1 then
-                if health < bestHealth then
-                    isBetter = true
-                end
-            end
-        end
-
-        if isBetter then
-            bestDistToCenter = distToCenter
-            bestDist3D = dist3D
-            bestHealth = health
-            bestPlayer = v
-        end
-    end
-
-    return bestPlayer
-end
-
 local function applySilentAim()
     if not silentAimEnabled then return end
-    local targetPos, _ = getBestTarget()
+    local targetPos, targetPlayer = getBestTarget()
     if targetPos then
         silentAimOriginalCFrame = camera.CFrame
         camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPos)
@@ -389,7 +339,9 @@ local function getSkeletonConnections(character)
 end
 
 local function getESPColorForPlayer(player)
-    if player == visualTargetPlayer then return Color3.new(1, 0, 0) end
+    if (aimbotEnabled or silentAimEnabled) and player == currentTarget then
+        return Color3.new(1, 0, 0)
+    end
     if isAlly(player) then return Color3.new(0, 1, 1) end
     if not teamCheckEnabled then return Color3.new(1, 1, 1) end
     if lplr.Team == nil or player.Team == nil then return Color3.new(1, 0, 0) end
@@ -474,7 +426,6 @@ end
 Players.PlayerRemoving:Connect(function(player)
     clearPlayerESP(player)
     if currentTarget == player then currentTarget = nil; targetAcquireTime = nil end
-    if visualTargetPlayer == player then visualTargetPlayer = nil end
 end)
 
 local screenGui = Instance.new("ScreenGui")
@@ -960,8 +911,6 @@ end
 createFOVCircle()
 
 RunService.RenderStepped:Connect(function()
-    visualTargetPlayer = getVisualTarget()
-
     for _, v in pairs(Players:GetPlayers()) do if v ~= lplr then updateESPForPlayer(v) end end
 
     if currentTarget and isPlayerDead(currentTarget) then
@@ -1027,9 +976,11 @@ RunService.RenderStepped:Connect(function()
         silentAimOriginalCFrame = nil
     end
 
-    if silentAimEnabled and visualTargetPlayer then
-        local targetPos = getTargetPosition(visualTargetPlayer.Character, "Head")
+    local priorityTargetPos = nil
+    if aimbotEnabled or silentAimEnabled then
+        local targetPos, targetPlayer = getBestTarget()
         if targetPos then
+            priorityTargetPos = targetPos
             if not aimIndicatorLine then
                 aimIndicatorLine = Drawing.new("Line")
                 aimIndicatorLine.Thickness = 1
