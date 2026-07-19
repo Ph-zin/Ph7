@@ -21,6 +21,7 @@ local aimbotTarget = "Head"
 local legitHoldTime = 800
 local currentTarget = nil
 local targetAcquireTime = nil
+local visualTargetPlayer = nil
 
 local noRecoilEnabled = false
 local speedEnabled = false
@@ -47,43 +48,6 @@ local function isPlayerDead(player)
     if not char then return true end
     local humanoid = char:FindFirstChild("Humanoid")
     return not humanoid or humanoid.Health <= 0
-end
-
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    if input.UserInputType == Enum.UserInputType.Gamepad1 then
-        if input.KeyCode == Enum.KeyCode.ButtonR2 then
-            controllerShooting = true
-            if silentAimEnabled then applySilentAim() end
-        elseif input.KeyCode == Enum.KeyCode.ButtonL2 then
-            controllerAiming = true
-        end
-    end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.Gamepad1 then
-        if input.KeyCode == Enum.KeyCode.ButtonR2 then
-            controllerShooting = false
-        elseif input.KeyCode == Enum.KeyCode.ButtonL2 then
-            controllerAiming = false
-        end
-    elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-        activeSlider = nil
-        draggingFloat = false
-    end
-end)
-
-UserInputService.WindowFocused:Connect(function()
-    controllerShooting = false
-    controllerAiming = false
-end)
-
-local function isShootingPressed()
-    return controllerShooting
-end
-
-local function isAimingPressed()
-    return controllerAiming
 end
 
 local function isAlly(player)
@@ -257,12 +221,7 @@ local function getVisualTarget()
         end
     end
 
-    if bestPlayer then
-        local targetType = "Head"
-        if aimbotTarget == "Chest" then targetType = "Chest" end
-        return getTargetPosition(bestPlayer.Character, targetType)
-    end
-    return nil
+    return bestPlayer
 end
 
 local function applySilentAim()
@@ -273,6 +232,43 @@ local function applySilentAim()
         camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPos)
         silentAimActive = true
     end
+end
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if input.UserInputType == Enum.UserInputType.Gamepad1 then
+        if input.KeyCode == Enum.KeyCode.ButtonR2 then
+            controllerShooting = true
+            if silentAimEnabled then applySilentAim() end
+        elseif input.KeyCode == Enum.KeyCode.ButtonL2 then
+            controllerAiming = true
+        end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.Gamepad1 then
+        if input.KeyCode == Enum.KeyCode.ButtonR2 then
+            controllerShooting = false
+        elseif input.KeyCode == Enum.KeyCode.ButtonL2 then
+            controllerAiming = false
+        end
+    elseif input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        activeSlider = nil
+        draggingFloat = false
+    end
+end)
+
+UserInputService.WindowFocused:Connect(function()
+    controllerShooting = false
+    controllerAiming = false
+end)
+
+local function isShootingPressed()
+    return controllerShooting
+end
+
+local function isAimingPressed()
+    return controllerAiming
 end
 
 local function updateSpinBot()
@@ -393,7 +389,7 @@ local function getSkeletonConnections(character)
 end
 
 local function getESPColorForPlayer(player)
-    if player == currentTarget then return Color3.new(1, 0, 0) end
+    if player == visualTargetPlayer then return Color3.new(1, 0, 0) end
     if isAlly(player) then return Color3.new(0, 1, 1) end
     if not teamCheckEnabled then return Color3.new(1, 1, 1) end
     if lplr.Team == nil or player.Team == nil then return Color3.new(1, 0, 0) end
@@ -478,6 +474,7 @@ end
 Players.PlayerRemoving:Connect(function(player)
     clearPlayerESP(player)
     if currentTarget == player then currentTarget = nil; targetAcquireTime = nil end
+    if visualTargetPlayer == player then visualTargetPlayer = nil end
 end)
 
 local screenGui = Instance.new("ScreenGui")
@@ -963,6 +960,8 @@ end
 createFOVCircle()
 
 RunService.RenderStepped:Connect(function()
+    visualTargetPlayer = getVisualTarget()
+
     for _, v in pairs(Players:GetPlayers()) do if v ~= lplr then updateESPForPlayer(v) end end
 
     if currentTarget and isPlayerDead(currentTarget) then
@@ -1028,8 +1027,8 @@ RunService.RenderStepped:Connect(function()
         silentAimOriginalCFrame = nil
     end
 
-    if silentAimEnabled then
-        local targetPos = getVisualTarget()
+    if silentAimEnabled and visualTargetPlayer then
+        local targetPos = getTargetPosition(visualTargetPlayer.Character, "Head")
         if targetPos then
             if not aimIndicatorLine then
                 aimIndicatorLine = Drawing.new("Line")
