@@ -28,16 +28,13 @@ local currentSpeed = 16
 local noclipEnabled = false
 
 local silentAimEnabled = false
-local silentAimMode = "Flick"
 local spinBotEnabled = false
 local spinBotSpeed = 10
 
+local flickRequested = false
+local flickTargetPos = nil
 local silentAimActive = false
 local silentAimOriginalCFrame = nil
-local smoothStartCF = nil
-local smoothTargetCF = nil
-local smoothStartTime = 0
-local smoothDuration = 0.08
 
 local aimIndicatorLine = nil
 
@@ -179,35 +176,12 @@ local function getBestTarget()
     end
 end
 
-local function applySilentAim()
+local function requestFlick()
     if not silentAimEnabled then return end
-    local targetPos, targetPlayer = getBestTarget()
-    if not targetPos then return end
-
-    if silentAimMode == "Flick" then
-        silentAimOriginalCFrame = camera.CFrame
-        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPos)
-        silentAimActive = true
-    elseif silentAimMode == "Smooth" then
-        smoothStartCF = camera.CFrame
-        smoothTargetCF = CFrame.lookAt(camera.CFrame.Position, targetPos)
-        smoothStartTime = tick()
-    elseif silentAimMode == "Tool" then
-        local char = lplr.Character
-        if char then
-            local tool = char:FindFirstChildOfClass("Tool")
-            if tool then
-                pcall(function()
-                    local toolCF = CFrame.lookAt(tool.Handle.Position, targetPos)
-                    tool.Handle.CFrame = toolCF
-                end)
-            else
-                -- fallback para flick
-                silentAimOriginalCFrame = camera.CFrame
-                camera.CFrame = CFrame.lookAt(camera.CFrame.Position, targetPos)
-                silentAimActive = true
-            end
-        end
+    local targetPos, _ = getBestTarget()
+    if targetPos then
+        flickRequested = true
+        flickTargetPos = targetPos
     end
 end
 
@@ -215,7 +189,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if input.UserInputType == Enum.UserInputType.Gamepad1 then
         if input.KeyCode == Enum.KeyCode.ButtonR2 then
             controllerShooting = true
-            if silentAimEnabled then applySilentAim() end
+            requestFlick()
         elseif input.KeyCode == Enum.KeyCode.ButtonL2 then
             controllerAiming = true
         end
@@ -794,30 +768,6 @@ end)
 createSlider(aimFrame, "Tempo Legit", 0, 3000, legitHoldTime, 50, function(v) legitHoldTime = v end, "%d", 100)
 createToggle(aimFrame, "Silent Aim", function(on) silentAimEnabled = on end)
 
-local silentModeBtn = Instance.new("TextButton")
-silentModeBtn.Size = UDim2.new(0, 290, 0, 30)
-silentModeBtn.BackgroundColor3 = Color3.fromRGB(30, 0, 0)
-silentModeBtn.Text = "  Modo Silent: Flick"
-silentModeBtn.TextColor3 = Color3.new(0.9, 0.9, 0.9)
-silentModeBtn.TextSize = 12
-silentModeBtn.Font = Enum.Font.Gotham
-silentModeBtn.TextXAlignment = Enum.TextXAlignment.Left
-silentModeBtn.BorderSizePixel = 0
-silentModeBtn.Parent = aimFrame
-Instance.new("UICorner", silentModeBtn).CornerRadius = UDim.new(0, 6)
-silentModeBtn.MouseButton1Click:Connect(function()
-    if silentAimMode == "Flick" then
-        silentAimMode = "Smooth"
-        silentModeBtn.Text = "  Modo Silent: Smooth"
-    elseif silentAimMode == "Smooth" then
-        silentAimMode = "Tool"
-        silentModeBtn.Text = "  Modo Silent: Tool"
-    else
-        silentAimMode = "Flick"
-        silentModeBtn.Text = "  Modo Silent: Flick"
-    end
-end)
-
 local visFrame = tabFrames[2]
 createToggle(visFrame, "ESP", function(on) espEnabled = on; if not on then clearAllESP() end end)
 createToggle(visFrame, "FOV", function(on) fovEnabled = on; updateFOVCircle() end)
@@ -961,7 +911,18 @@ end
 
 createFOVCircle()
 
+-- Flick no Stepped (antes da física)
+RunService.Stepped:Connect(function()
+    if flickRequested and flickTargetPos then
+        silentAimOriginalCFrame = camera.CFrame
+        camera.CFrame = CFrame.lookAt(camera.CFrame.Position, flickTargetPos)
+        silentAimActive = true
+        flickRequested = false
+    end
+end)
+
 RunService.RenderStepped:Connect(function()
+    -- arrasto do botão flutuante tratado em outra conexão, não aqui
     for _, v in pairs(Players:GetPlayers()) do if v ~= lplr then updateESPForPlayer(v) end end
 
     if currentTarget and isPlayerDead(currentTarget) then
@@ -1021,30 +982,18 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
+    -- restaura câmera após flick
     if silentAimActive and silentAimOriginalCFrame then
         camera.CFrame = silentAimOriginalCFrame
         silentAimActive = false
         silentAimOriginalCFrame = nil
+        flickTargetPos = nil
     end
 
-    if silentAimEnabled and silentAimMode == "Smooth" and controllerShooting and smoothStartCF and smoothTargetCF then
-        local elapsed = tick() - smoothStartTime
-        local alpha = math.clamp(elapsed / smoothDuration, 0, 1)
-        camera.CFrame = smoothStartCF:Lerp(smoothTargetCF, alpha)
-        if alpha >= 1 then
-            smoothStartCF = nil
-            smoothTargetCF = nil
-        end
-    elseif not controllerShooting then
-        smoothStartCF = nil
-        smoothTargetCF = nil
-    end
-
-    local priorityTargetPos = nil
+    -- linha indicadora
     if aimbotEnabled or silentAimEnabled then
-        local targetPos, targetPlayer = getBestTarget()
+        local targetPos, _ = getBestTarget()
         if targetPos then
-            priorityTargetPos = targetPos
             if not aimIndicatorLine then
                 aimIndicatorLine = Drawing.new("Line")
                 aimIndicatorLine.Thickness = 1
