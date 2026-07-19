@@ -1,11 +1,3 @@
---[[
-    Ph7 - Aimbot & Utility Script (FINAL COMPLETO)
-    ESP completo | Menu aliados | Silent Aim flick (respeita FOV) | Legit timer | SpinBot | No Spread (100% sem recoil)
-    Aimbot normal funciona ao mirar (L2) OU atirar (R2) - apenas controle
-    Sliders com arrasto e botões +/- | Interface reorganizada e cor vermelha
-    Botão flutuante arrastável em mobile e PC | Menu rolável
-]]
-
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -15,7 +7,6 @@ local lplr = Players.LocalPlayer
 local camera = Workspace.CurrentCamera
 local mouse = lplr:GetMouse()
 
--- ==================== ESTADOS ====================
 local espEnabled = false
 local aimbotEnabled = false
 local teamCheckEnabled = false
@@ -44,12 +35,11 @@ local silentAimActive = false
 local silentAimOriginalCFrame = nil
 
 local activeSlider = nil
+local draggingFloat = false
 
--- Estados dos botões (apenas R2 e L2)
 local controllerShooting = false
 local controllerAiming = false
 
--- ==================== FUNÇÕES AUXILIARES ====================
 local function isPlayerDead(player)
     local char = player.Character
     if not char then return true end
@@ -135,7 +125,6 @@ local function getTargetPosition(character, targetType)
     return nil
 end
 
--- ==================== MELHOR ALVO (COM LOCK-ON E PRIORIDADE) ====================
 local function getBestTarget()
     if currentTarget then
         local targetChar = currentTarget.Character
@@ -220,7 +209,6 @@ local function getBestTarget()
     end
 end
 
--- ==================== SILENT AIM (FLICK) ====================
 local function applySilentAim()
     if not silentAimEnabled then return end
     local targetPos, _ = getBestTarget()
@@ -231,7 +219,6 @@ local function applySilentAim()
     end
 end
 
--- ==================== SPINBOT ====================
 local function updateSpinBot()
     if not spinBotEnabled then return end
     local char = lplr.Character
@@ -242,7 +229,6 @@ local function updateSpinBot()
     rootPart.CFrame = rootPart.CFrame * CFrame.Angles(0, delta, 0)
 end
 
--- ==================== NOCLIP ====================
 local function setNoclip(state)
     local char = lplr.Character
     if char then
@@ -254,7 +240,6 @@ local function setNoclip(state)
     end
 end
 
--- ==================== FOV ====================
 local function createFOVCircle()
     if fovCircle then return end
     fovCircle = Drawing.new("Circle")
@@ -273,7 +258,6 @@ local function updateFOVCircle()
     end
 end
 
--- ==================== ESP (COMPLETO) ====================
 local function clearPlayerESP(player)
     local data = espDrawings[player]
     if data then
@@ -362,7 +346,6 @@ local function updateESPForPlayer(player)
     local data = espDrawings[player]
     if not data then data = { box = nil, skeletonLines = {}, healthBar = nil, healthBg = nil }; espDrawings[player] = data end
 
-    -- Box
     if not data.box then data.box = Drawing.new("Square"); data.box.Thickness = 2; data.box.Filled = false end
     local footPos = rootPart.Position - Vector3.new(0, 3, 0)
     local footScreen = camera:WorldToViewportPoint(footPos)
@@ -375,7 +358,6 @@ local function updateESPForPlayer(player)
     data.box.Position = Vector2.new(centerX - width/2, topY)
     data.box.Size = Vector2.new(width, height)
 
-    -- Barra de vida
     local barWidth = 3
     local barX = centerX + width/2 + 2
     if not data.healthBg then
@@ -397,7 +379,6 @@ local function updateESPForPlayer(player)
     data.healthBar.Size = Vector2.new(barWidth, height * healthPercent)
     data.healthBar.Position = Vector2.new(barX, topY + height * (1 - healthPercent))
 
-    -- Skeleton
     local connections = getSkeletonConnections(char)
     while #data.skeletonLines > #connections do table.remove(data.skeletonLines):Remove() end
     while #data.skeletonLines < #connections do
@@ -425,13 +406,11 @@ Players.PlayerRemoving:Connect(function(player)
     if currentTarget == player then currentTarget = nil; targetAcquireTime = nil end
 end)
 
--- ==================== GUI (INTERFACE) - COR VERMELHA (AJUSTES FINAIS) ====================
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "Ph7"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = lplr:WaitForChild("PlayerGui")
 
--- Botão flutuante
 local floatButton = Instance.new("ImageButton")
 floatButton.Size = UDim2.new(0, 45, 0, 45)
 floatButton.Position = UDim2.new(0, 10, 0, 10)
@@ -446,12 +425,12 @@ Instance.new("UICorner", floatButton).CornerRadius = UDim.new(0.5, 0)
 floatButton.MouseEnter:Connect(function() floatButton.BackgroundTransparency = 0 end)
 floatButton.MouseLeave:Connect(function() floatButton.BackgroundTransparency = 0.3 end)
 
-local draggingFloat, dragFloatStart, floatStartPos = false, nil, nil
+local dragFloatStart, floatStartPos
 
 floatButton.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
         draggingFloat = true
-        activeSlider = nil  -- impede conflito com slider
+        activeSlider = nil
         dragFloatStart = Vector2.new(mouse.X, mouse.Y)
         floatStartPos = floatButton.Position
     end
@@ -463,7 +442,6 @@ floatButton.InputEnded:Connect(function(input)
     end
 end)
 
--- Novo loop para arrasto em mobile/PC (usa mouse.X/Y que funciona em ambos)
 RunService.RenderStepped:Connect(function()
     if draggingFloat then
         local delta = Vector2.new(mouse.X, mouse.Y) - dragFloatStart
@@ -473,7 +451,6 @@ end)
 
 UserInputService.InputChanged:Connect(function(input)
     if activeSlider and input.UserInputType == Enum.UserInputType.MouseMovement then
-        -- Mantido para sliders no PC (arrasto fino)
         local trackAbsPos = activeSlider.track.AbsolutePosition.X
         local trackSize = activeSlider.track.AbsoluteSize.X
         local relativeX = math.clamp(mouse.X - trackAbsPos, 0, trackSize)
@@ -488,7 +465,6 @@ UserInputService.InputChanged:Connect(function(input)
     end
 end)
 
--- Menu principal (altura reduzida para 270)
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.new(0, 320, 0, 270)
 mainFrame.Position = UDim2.new(0.5, -160, 0.2, 0)
@@ -518,7 +494,6 @@ titleLabel.Font = Enum.Font.GothamBold
 titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 titleLabel.Parent = titleBar
 
--- Botão fechar com "X"
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 28, 0, 28)
 closeBtn.Position = UDim2.new(1, -32, 0, 4)
@@ -530,7 +505,6 @@ closeBtn.Font = Enum.Font.GothamBold
 closeBtn.Parent = titleBar
 closeBtn.MouseButton1Click:Connect(function() mainFrame.Visible = false end)
 
--- Abas
 local tabButtons = {}
 local tabs = {"AIMBOT", "VISUAL", "MISC"}
 local tabFrames = {}
@@ -564,7 +538,7 @@ for i, name in ipairs(tabs) do
     frame.CanvasSize = UDim2.new(0, 0, 0, 0)
     frame.ScrollBarThickness = 4
     frame.ScrollingEnabled = true
-    frame.AutomaticCanvasSize = Enum.AutomaticSize.Y  -- ROLAGEM ATIVADA
+    frame.AutomaticCanvasSize = Enum.AutomaticSize.Y
     frame.Visible = (i == 1)
     frame.Parent = mainFrame
     table.insert(tabFrames, frame)
@@ -589,7 +563,6 @@ end
 
 floatButton.MouseButton1Click:Connect(function() mainFrame.Visible = not mainFrame.Visible end)
 
--- ==================== COMPONENTES ====================
 local function createToggle(frame, text, callback)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(0, 290, 0, 30)
@@ -634,7 +607,6 @@ local function createSlider(frame, text, min, max, default, step, callback, form
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = container
 
-    -- Botão "-"
     local btnMinus = Instance.new("TextButton")
     btnMinus.Size = UDim2.new(0, 22, 0, 18)
     btnMinus.Position = UDim2.new(0, 10, 0, 24)
@@ -647,7 +619,6 @@ local function createSlider(frame, text, min, max, default, step, callback, form
     btnMinus.Parent = container
     Instance.new("UICorner", btnMinus).CornerRadius = UDim.new(0, 4)
 
-    -- Track (slider)
     local track = Instance.new("Frame")
     track.Size = UDim2.new(1, -76, 0, 6)
     track.Position = UDim2.new(0, 38, 0, 30)
@@ -673,7 +644,6 @@ local function createSlider(frame, text, min, max, default, step, callback, form
     knob.Parent = track
     Instance.new("UICorner", knob).CornerRadius = UDim.new(1, 0)
 
-    -- Botão "+"
     local btnPlus = Instance.new("TextButton")
     btnPlus.Size = UDim2.new(0, 22, 0, 18)
     btnPlus.Position = UDim2.new(1, -32, 0, 24)
@@ -728,7 +698,7 @@ local function createSlider(frame, text, min, max, default, step, callback, form
 
     knob.MouseButton1Down:Connect(function()
         activeSlider = sliderData
-        draggingFloat = false  -- garante que não conflite
+        draggingFloat = false
         updateFromMouse()
     end)
     track.InputBegan:Connect(function(input)
@@ -742,7 +712,6 @@ local function createSlider(frame, text, min, max, default, step, callback, form
     return container
 end
 
--- ==================== PREENCHER ABAS (ORDEM REVISADA) ====================
 local aimFrame = tabFrames[1]
 createToggle(aimFrame, "Aimbot", function(on)
     aimbotEnabled = on
@@ -816,7 +785,6 @@ end, "%d", 5)
 createToggle(miscFrame, "NoClip", function(on) noclipEnabled = on; setNoclip(on) end)
 createToggle(miscFrame, "No Recoil", function(on) noRecoilEnabled = on end)
 
--- ==================== MENU DE ALIADOS (REDUZIDO largura 200, altura 130) ====================
 function toggleAlliesMenu()
     local existing = screenGui:FindFirstChild("AlliesSubmenu")
     if existing then existing:Destroy(); return end
@@ -861,7 +829,7 @@ function toggleAlliesMenu()
     playerListFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
     playerListFrame.ScrollBarThickness = 4
     playerListFrame.ScrollingEnabled = true
-    playerListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y  -- também rolável
+    playerListFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
     playerListFrame.Parent = sub
     Instance.new("UICorner", playerListFrame).CornerRadius = UDim.new(0, 6)
 
@@ -918,20 +886,16 @@ function toggleAlliesMenu()
     refreshUI()
 end
 
--- ==================== LOOP PRINCIPAL ====================
 createFOVCircle()
 
 RunService.RenderStepped:Connect(function()
-    -- ESP
     for _, v in pairs(Players:GetPlayers()) do if v ~= lplr then updateESPForPlayer(v) end end
 
-    -- Reset se alvo morreu
     if currentTarget and isPlayerDead(currentTarget) then
         currentTarget = nil
         targetAcquireTime = nil
     end
 
-    -- No Recoil 100% (ferramenta, camera recoil e CameraOffset)
     if noRecoilEnabled and isShootingPressed() then
         local char = lplr.Character
         if char then
@@ -974,10 +938,8 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- NoClip
     if noclipEnabled and lplr.Character then setNoclip(true) end
 
-    -- Aimbot normal (MIRAR OU ATIRAR)
     if aimbotEnabled and not silentAimEnabled and (isShootingPressed() or isAimingPressed()) then
         local targetPos, _ = getBestTarget()
         if targetPos then
@@ -986,14 +948,12 @@ RunService.RenderStepped:Connect(function()
         end
     end
 
-    -- Restaura câmera após flick do Silent Aim
     if silentAimActive and silentAimOriginalCFrame then
         camera.CFrame = silentAimOriginalCFrame
         silentAimActive = false
         silentAimOriginalCFrame = nil
     end
 
-    -- Velocidade
     if speedEnabled and lplr.Character then
         local humanoid = lplr.Character:FindFirstChild("Humanoid")
         if humanoid and humanoid.Health > 0 then humanoid.WalkSpeed = currentSpeed end
@@ -1003,7 +963,6 @@ RunService.RenderStepped:Connect(function()
     updateSpinBot()
 end)
 
--- Limpeza
 screenGui.AncestryChanged:Connect(function()
     if not screenGui.Parent then
         if fovCircle then fovCircle:Remove() end
